@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VORTEX | Digital Store</title>
+
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/react-router-dom@5/umd/react-router-dom.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<style>
+:root { --primary: #0078f2; --success: #22c55e; --bg: #0b0d14; --card-bg: #161923; }
+body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg); color: #fff; }
+
+nav { display: flex; justify-content: space-between; align-items: center; padding: 1rem 5%; background: #0a0c12; position: sticky; top: 0; z-index: 1000; border-bottom: 1px solid #222; }
+.logo { font-size: 1.6rem; font-weight: 900; letter-spacing: 2px; color: #fff; text-decoration: none; }
+nav div a { color: #888; text-decoration: none; margin-left: 20px; font-size: 0.8rem; text-transform: uppercase; font-weight: 700; }
+
+.container { max-width: 1300px; margin: auto; padding: 2rem; }
+
+/* NOTICIA PRINCIPAL UNIFICADA */
+.promo-banner { background: linear-gradient(90deg, #1a1d29, #0078f233); padding: 40px; border-radius: 15px; border: 1px solid #333; cursor: pointer; margin-bottom: 40px; transition: 0.3s; position: relative; overflow: hidden; }
+.promo-banner:hover { border-color: var(--primary); transform: scale(1.01); }
+.promo-banner h2 { margin: 10px 0; font-size: 2rem; }
+.badge-live { position: absolute; top: 20px; right: 20px; background: #ff4444; padding: 5px 15px; border-radius: 20px; font-size: 0.7rem; font-weight: 800; animation: pulse 2s infinite; }
+
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+/* GRID COMPACTO */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
+.card { background: var(--card-bg); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid #222; position: relative; }
+.card-img { width: 100%; height: 180px; object-fit: cover; }
+
+/* ETIQUETA DE DESCUENTO */
+.discount-tag { position: absolute; top: 10px; left: 10px; background: var(--success); color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 900; z-index: 10; }
+
+.card-body { padding: 15px; display: flex; flex-direction: column; flex-grow: 1; }
+.card-title { font-size: 0.9rem; font-weight: 700; height: 38px; margin-bottom: 10px; overflow: hidden; }
+
+.price-box { height: 45px; display: flex; flex-direction: column; justify-content: flex-end; margin-bottom: 10px; }
+.old-p { text-decoration: line-through; opacity: 0.4; font-size: 0.75rem; }
+.new-p { font-size: 1.1rem; font-weight: 800; }
+.free-p { color: var(--success); font-weight: 900; }
+
+/* CARRITO */
+.cart-layout { display: grid; grid-template-columns: 1fr 350px; gap: 30px; }
+.cart-item { background: #161923; padding: 20px; border-radius: 8px; border: 1px solid #222; display: flex; gap: 20px; align-items: center; margin-bottom: 15px; }
+.cart-img-thumb { width: 70px; height: 90px; object-fit: cover; border-radius: 4px; }
+.cart-info { flex: 1; }
+.cart-prices { display: flex; align-items: center; gap: 12px; margin-top: 5px; }
+.cart-summary-box { background: #1a1d29; border: 1px solid var(--primary); padding: 25px; border-radius: 12px; height: fit-content; position: sticky; top: 100px; }
+
+.btn { width: 100%; padding: 12px; border: none; border-radius: 4px; font-weight: 800; cursor: pointer; text-transform: uppercase; font-size: 0.75rem; }
+.btn-blue { background: var(--primary); color: #fff; }
+.btn-success { background: var(--success); color: #fff; }
+
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--primary); padding: 12px 25px; border-radius: 5px; font-weight: 700; z-index: 2000; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { HashRouter, Route, Link, Switch, useHistory } = window.ReactRouterDOM;
+const API_KEY = "8b7fdccb11e843618975e34422a8fe61";
+
+const formatCOP = p => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(p);
+
+function App() {
+  const [games, setGames] = React.useState([]);
+  const [cart, setCart] = React.useState(JSON.parse(localStorage.getItem("vortex_v15")) || []);
+  const [msg, setMsg] = React.useState("");
+
+  React.useEffect(() => {
+    fetch(`https://api.rawg.io/api/games?key=${API_KEY}&page_size=100`)
+      .then(r => r.json())
+      .then(data => {
+        const d = new Date();
+        const seed = d.getFullYear() + d.getMonth() + (d.getDate() - d.getDay()); 
+        const processed = data.results.map((g) => {
+          const hash = (g.id + seed) % 10;
+          const isFree = hash === 2; // Juegos variados (no solo los populares)
+          const isSale = hash === 4 || hash === 6 || hash === 8;
+          
+          // Porcentaje de descuento variado: 20, 40, 60 u 80%
+          const discountPercent = isSale ? ([20, 40, 60, 80][g.id % 4]) : 0;
+          const base = g.rating > 4.5 ? 289000 : 179000;
+          const final = isFree ? 0 : (isSale ? Math.floor(base * (1 - discountPercent / 100)) : base);
+
+          return { ...g, isFree, isSale, discountPercent, originalPrice: base, finalPrice: final };
+        });
+        setGames(processed);
+      });
+  }, []);
+
+  const addToCart = (g) => {
+    const n = [...cart, g]; setCart(n); localStorage.setItem("vortex_v15", JSON.stringify(n));
+    setMsg("AÑADIDO AL CARRITO"); setTimeout(() => setMsg(""), 2000);
+  };
+
+  return (
+    <HashRouter>
+      <nav>
+        <Link to="/" className="logo">VORTEX</Link>
+        <div>
+          <Link to="/">Inicio</Link>
+          <Link to="/explore">Explorar</Link>
+          <Link to="/cart">Carrito ({cart.length})</Link>
+        </div>
+      </nav>
+      {msg && <div className="toast">{msg}</div>}
+      <Switch>
+        <Route exact path="/" render={() => <Home games={games} add={addToCart} />} />
+        <Route path="/explore/:filter?" render={(p) => <Explore {...p} games={games} add={addToCart} />} />
+        <Route path="/game/:id" render={(p) => <GameDetail {...p} games={games} add={addToCart} />} />
+        <Route path="/cart" render={() => <CartView cart={cart} setCart={setCart} />} />
+      </Switch>
+    </HashRouter>
+  );
+}
+
+function Home({ games, add }) {
+  const history = useHistory();
+  if (!games.length) return <div className="container">SINCRONIZANDO VORTEX...</div>;
+
+  return (
+    <div className="container">
+      <div className="promo-banner" onClick={() => history.push('/explore/deals')}>
+        <div className="badge-live">ACTUALIZADO HOY</div>
+        <span style={{color: 'var(--primary)', fontWeight:800, fontSize:'0.8rem'}}>OFERTAS DE LUNES</span>
+        <h2>VORTEX DEALS: Gratis y Descuentos</h2>
+        <p style={{opacity:0.7}}>Explora los títulos gratuitos de la semana y ofertas de hasta el 80% de descuento. Ver catálogo completo →</p>
+      </div>
+
+      <h3 style={{marginBottom:'20px', textTransform:'uppercase'}}>Tendencias</h3>
+      <div className="grid">
+        {games.slice(0, 15).map(g => <GameCard key={g.id} g={g} add={add} />)}
+      </div>
+    </div>
+  );
+}
+
+function Explore({ match, games, add }) {
+  const [q, setQ] = React.useState("");
+  const filterType = match.params.filter;
+  const filtered = games.filter(g => {
+    const matches = g.name.toLowerCase().includes(q.toLowerCase());
+    if (filterType === 'deals') return matches && (g.isFree || g.isSale);
+    return matches;
+  });
+
+  return (
+    <div className="container">
+      <h2 style={{textTransform:'uppercase'}}>{filterType === 'deals' ? 'Catálogo de Ofertas de Lunes' : 'Catálogo Completo'}</h2>
+      <input 
+        placeholder="Buscar juego..." 
+        style={{width:'100%', padding:'15px', background:'#161923', color:'#fff', border:'1px solid #333', borderRadius:'8px', marginBottom:'30px'}}
+        onChange={e => setQ(e.target.value)}
+      />
+      <div className="grid">
+        {filtered.map(g => <GameCard key={g.id} g={g} add={add} />)}
+      </div>
+    </div>
+  );
+}
+
+const GameCard = ({ g, add }) => (
+  <div className="card">
+    {g.isSale && <div className="discount-tag">-{g.discountPercent}%</div>}
+    {g.isFree && <div className="discount-tag" style={{background:'#22c55e'}}>FREE</div>}
+    <Link to={`/game/${g.id}`}><img src={g.background_image} className="card-img"/></Link>
+    <div className="card-body">
+      <h4 className="card-title">{g.name}</h4>
+      <div className="price-box">
+        {(g.isFree || g.isSale) && <span className="old-p">{formatCOP(g.originalPrice)}</span>}
+        {g.isFree ? <span className="free-p">GRATIS</span> : <span className="new-p">{formatCOP(g.finalPrice)}</span>}
+      </div>
+      <button className={g.isFree ? 'btn btn-success' : 'btn btn-blue'} onClick={() => add(g)}>
+        {g.isFree ? 'Obtener' : 'Añadir'}
+      </button>
+    </div>
+  </div>
+);
+
+function GameDetail({ match, games, add }) {
+  const [data, setData] = React.useState(null);
+  const [video, setVideo] = React.useState(null);
+  const [screens, setScreens] = React.useState([]);
+  const info = games.find(g => g.id == match.params.id);
+
+  React.useEffect(() => {
+    const id = match.params.id;
+    fetch(`https://api.rawg.io/api/games/${id}?key=${API_KEY}`).then(r => r.json()).then(setData);
+    fetch(`https://api.rawg.io/api/games/${id}/movies?key=${API_KEY}`).then(r => r.json()).then(d => setVideo(d.results[0]?.data?.max));
+    fetch(`https://api.rawg.io/api/games/${id}/screenshots?key=${API_KEY}`).then(r => r.json()).then(d => setScreens(d.results.slice(0, 4)));
+  }, [match.params.id]);
+
+  if (!data || !info) return <div className="container">CARGANDO DETALLES...</div>;
+
+  return (
+    <div className="container">
+      <div style={{display:'grid', gridTemplateColumns:'1.6fr 1fr', gap:'40px'}}>
+        <div>
+          <div style={{borderRadius:'12px', overflow:'hidden', background:'#000', position:'relative'}}>
+             {info.isSale && <div className="discount-tag" style={{fontSize:'1.2rem', padding:'10px 20px'}}>-{info.discountPercent}%</div>}
+             {video ? <video src={video} style={{width:'100%'}} controls autoPlay muted /> : <img src={data.background_image} style={{width:'100%'}} />}
+          </div>
+          <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:'10px', marginTop:'15px'}}>
+            {screens.map(s => <img key={s.id} src={s.image} style={{width:'100%', borderRadius:'4px', border:'1px solid #333'}} />)}
+          </div>
+        </div>
+        <div>
+          <h1 style={{fontSize:'2.5rem', margin:0}}>{data.name}</h1>
+          <div style={{margin: '20px 0'}}>
+             {(info.isFree || info.isSale) && <span className="old-p" style={{fontSize:'1.1rem'}}>{formatCOP(info.originalPrice)}</span>}
+             <div style={{fontSize:'2.5rem', fontWeight:900}} className={info.isFree ? 'free-p' : ''}>
+                {info.isFree ? 'GRATIS' : formatCOP(info.finalPrice)}
+             </div>
+          </div>
+          <p style={{opacity:0.6, lineHeight:1.6}}>{data.description_raw}</p>
+          <button className="btn btn-blue" style={{padding:'18px', fontSize:'1rem'}} onClick={() => add(info)}>AÑADIR AL CARRITO</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CartView({ cart, setCart }) {
+  const subtotal = cart.reduce((a, g) => a + g.originalPrice, 0);
+  const total = cart.reduce((a, g) => a + g.finalPrice, 0);
+  const ahorro = subtotal - total;
+
+  const remove = i => {
+    const n = cart.filter((_, x) => x !== i);
+    setCart(n); localStorage.setItem("vortex_v15", JSON.stringify(n));
+  };
+
+  if (!cart.length) return <div className="container" style={{textAlign:'center', padding:'100px'}}><h2>TU CARRITO ESTÁ VACÍO</h2><Link to="/" style={{color:'var(--primary)'}}>Ir a la tienda</Link></div>;
+
+  return (
+    <div className="container">
+      <h1 style={{marginBottom:'40px'}}>TU CARRITO</h1>
+      <div className="cart-layout">
+        <div>
+          {cart.map((g, i) => (
+            <div key={i} className="cart-item">
+              <img src={g.background_image} className="cart-img-thumb" />
+              <div className="cart-info">
+                <h4 style={{margin:0}}>{g.name}</h4>
+                <div className="cart-prices">
+                  {(g.isFree || g.isSale) && <span className="old-p" style={{fontSize:'0.9rem'}}>{formatCOP(g.originalPrice)}</span>}
+                  <span style={{fontWeight:800, fontSize:'1.1rem'}} className={g.isFree ? 'free-p' : ''}>
+                    {g.isFree ? 'GRATIS' : formatCOP(g.finalPrice)}
+                  </span>
+                  {g.isSale && <span style={{background:'var(--success)', color:'#fff', padding:'2px 6px', borderRadius:'4px', fontSize:'0.7rem', fontWeight:900}}>-{g.discountPercent}%</span>}
+                </div>
+              </div>
+              <button onClick={() => remove(i)} style={{background:'none', border:'none', color:'#ff4444', fontWeight:700, cursor:'pointer'}}>QUITAR</button>
+            </div>
+          ))}
+        </div>
+        <div className="cart-summary-box">
+          <h3 style={{marginTop:0}}>RESUMEN</h3>
+          <div style={{display:'flex', justifyContent:'space-between', marginBottom:'10px', opacity:0.7}}><span>Precio Original:</span><span>{formatCOP(subtotal)}</span></div>
+          <div style={{display:'flex', justifyContent:'space-between', marginBottom:'10px', color: 'var(--success)', fontWeight:800}}>
+             <span>Ahorro Vortex:</span>
+             <span>-{formatCOP(ahorro)}</span>
+          </div>
+          <hr style={{borderColor:'#333', margin:'20px 0'}} />
+          <div style={{display:'flex', justifyContent:'space-between', fontSize:'1.6rem', fontWeight:900}}><span>Total:</span><span>{formatCOP(total)}</span></div>
+          <button className="btn btn-blue" style={{marginTop:'25px', padding:'18px', fontSize:'0.9rem'}} onClick={() => { alert("¡Gracias por tu compra!"); setCart([]); localStorage.setItem("vortex_v15", "[]"); }}>REALIZAR PAGO</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
